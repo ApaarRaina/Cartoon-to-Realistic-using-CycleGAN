@@ -36,8 +36,10 @@ class HorseZebraDataset(Dataset):
         self.horse_images = os.listdir(root_horse)
         self.len_set = max(len(self.zebra_images),len(self.horse_images))
         self.zebra_length, self.horse_length = len(self.zebra_images),len(self.horse_images)
+
     def __len__(self):
         return self.len_set
+
     def __getitem__(self, index):
         zebra_path= os.path.join(self.root_zebra,self.zebra_images[index%self.zebra_length])
         horse_path = os.path.join(self.root_horse,self.horse_images[index%self.horse_length])
@@ -81,7 +83,7 @@ for idx, (zebra, horse) in enumerate(loop):
     horse=horse.to(device)
 
     fake_horse = gen_H(zebra)
-    fake_zebra=gen_Z(horse)
+    fake_zebra = gen_Z(horse)
 
     # Save generated images with same style as training
     save_image(horse * 0.5 + 0.5, f'result_image/horses/{idx}.png')
