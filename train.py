@@ -1,3 +1,5 @@
+#17
+
 import torch
 import torch.nn as nn
 import os
@@ -13,115 +15,9 @@ import matplotlib.pyplot as plt
 import random
 import copy
 import torch.multiprocessing
+from generator import Generator
+from discriminator import Discriminator
 
-class DBlock(nn.Module):
-    def __init__(self,in_channels,out_channels, stride):
-        super().__init__()
-        self.conv = nn.Sequential(
-            nn.Conv2d(
-                in_channels,
-                out_channels,
-                kernel_size=4,
-                stride=stride,
-                padding=1,
-                bias=True,
-                padding_mode='reflect'
-            ),
-            nn.InstanceNorm2d(out_channels),
-            nn.LeakyReLU(0.2)
-        )
-    def forward(self,x): return self.conv(x)
-class Discriminator(nn.Module):
-    def __init__(self,in_channels, features = [64,128,256,512]):
-        super().__init__()
-        layers = list()
-        init_channels = in_channels
-        in_channels = features[0]
-        for feature in features[1:]:
-            layers.append(
-                DBlock(
-                    in_channels=in_channels,
-                    out_channels=feature,
-                    stride = 1 if feature==features[-1] else 2
-                )
-            )
-            in_channels = feature
-        self.discriminator = nn.Sequential(
-            #initial
-            nn.Sequential(
-                nn.Conv2d(
-                    in_channels=init_channels,
-                    out_channels=features[0],
-                    kernel_size=4,
-                    stride=2,
-                    padding=1,
-                    padding_mode='reflect'
-                ),
-                nn.LeakyReLU(0.2)
-            ),
-            #intermediate
-            nn.Sequential(*layers),
-            #final
-            nn.Conv2d(
-                in_channels=in_channels,
-                out_channels = 1,
-                kernel_size=4,
-                stride = 1,
-                padding=1,
-                padding_mode='reflect'
-            ),
-            nn.Sigmoid()
-        )
-    def forward(self,x):
-        return self.discriminator(x)
-
-def test():
-    x = torch.randn((1,3,256,256))
-    model = Discriminator(in_channels = 3)
-    print(model(x).shape)
-test()
-
-class GBlock(nn.Module):
-    def __init__(self,in_channels, out_channels, down = True, use_act = True, **kwargs):
-        super().__init__()
-        self.conv = nn.Sequential(
-            nn.Conv2d(in_channels = in_channels, out_channels = out_channels, padding_mode='reflect', **kwargs)
-            if down
-            else nn.ConvTranspose2d(in_channels=in_channels, out_channels=out_channels, **kwargs),
-            nn.InstanceNorm2d(out_channels),
-            nn.ReLU(inplace=True) if use_act else nn.Identity()
-        )
-    def forward(self,x): return self.conv(x)
-
-class ResidualBlock(nn.Module):
-    def __init__(self,channels):
-        super().__init__()
-        self.block = nn.Sequential(
-            GBlock(in_channels=channels,out_channels=channels,use_act=True,kernel_size = 3,padding=1),
-            GBlock(in_channels=channels,out_channels=channels,use_act=False,kernel_size = 3, padding=1),
-        )
-    def forward(self,x): return x+self.block(x)
-
-class Generator(nn.Module):
-    def __init__(self,in_channels,num_residuals=9):
-        super().__init__()
-        self.generator = nn.Sequential(
-            nn.Conv2d(in_channels,64,kernel_size=7,stride=1, padding=3, padding_mode='reflect'),
-            nn.ReLU(inplace=True),
-            GBlock(64,128,down=True, use_act = True,kernel_size = 3,stride = 2,padding = 1),
-            GBlock(128,256,down=True, use_act = True,kernel_size = 3,stride = 2,padding = 1),
-            *([ResidualBlock(256)]*num_residuals),
-            GBlock(256,128,down=False, kernel_size = 3, stride = 2, padding=1,output_padding=1),
-            GBlock(128,64,down=False, kernel_size = 3, stride = 2, padding=1,output_padding=1),
-            nn.Conv2d(64,3,7,1,3,padding_mode="reflect")
-        )
-    def forward(self,x): return self.generator(x)
-
-def test():
-    x = torch.randn((2,3,256,256))
-    gen = Generator(3)
-    print(gen(x).shape)
-test()
 
 if not os.path.isdir('saved_image'):
     os.mkdir('saved_image')
@@ -135,18 +31,18 @@ class Config:
     BATCH_SIZE = 1
     LEARNING_RATE = 0.0001
     LAMBDA_IDENTITY = 0.5
-    LAMBDA_CYCLE = 10
+    LAMBDA_CYCLE = 1
     NUM_WORKERS = 4
-    NUM_EPOCHS = 2
+    NUM_EPOCHS = 10
     LOAD_MODEL = True
     SAVE_MODEL = True
-    CHECKPOINT_GEN_H = "genh.pth.tar"
-    CHECKPOINT_GEN_Z = "genz.pth.tar"
-    CHECKPOINT_CRITIC_H = "critich.pth.tar"
-    CHECKPOINT_CRITIC_Z = "criticz.pth.tar"
+    CHECKPOINT_GEN_H = "pretrained/genh_2.pth.tar"
+    CHECKPOINT_GEN_Z = "pretrained/genz_2.pth.tar"
+    CHECKPOINT_CRITIC_H = "pretrained/critich_2.pth.tar"
+    CHECKPOINT_CRITIC_Z = "pretrained/criticz_2.pth.tar"
     transforms = A.Compose(
         [
-            A.Resize(width=256, height=256),
+            A.Resize(width=128, height=128),
             A.HorizontalFlip(p=0.5),
             A.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5], max_pixel_value=255),
             ToTensorV2(),
@@ -180,7 +76,6 @@ class HorseZebraDataset(Dataset):
             horse_img = augmentations['image0']
         return zebra_img,horse_img
 
-config = Config()
 class Utils:
     def save_checkpoint(self,model, optimizer, file_name = "Model.pth.tar"):
         print('__saving checkpoint__')
@@ -222,7 +117,7 @@ class Trainer:
                 D_Z_loss = D_Z_real_loss+D_Z_fake_loss
 
                 # loss for Disc of horse
-                fake_horse = gen_H(fake_zebra)
+                fake_horse = gen_H(zebra)
                 D_H_real = disc_H(horse)
                 D_H_fake = disc_H(fake_horse.detach())
                 D_H_real_loss = mse(D_H_real,torch.ones_like(D_H_real))
@@ -267,11 +162,11 @@ class Trainer:
                 save_image(fake_zebra*0.5+0.5, f'saved_image/zebras/{idx}.png')
 
     def train(self):
-        disc_H = Discriminator(in_channels=3).to(config.DEVICE) # classifying image of horses
-        disc_Z = Discriminator(in_channels=3).to(config.DEVICE) # classifying image of zebras
+        disc_H = Discriminator().to(config.DEVICE)
+        disc_Z = Discriminator().to(config.DEVICE)
 
-        gen_Z = Generator(in_channels=3, num_residuals=9).to(config.DEVICE) # generate a zebra from random noise
-        gen_H = Generator(in_channels=3, num_residuals=9).to(config.DEVICE) # generate a horse from random noise
+        gen_Z = Generator().to(config.DEVICE)
+        gen_H = Generator().to(config.DEVICE)
         opt_disc = torch.optim.Adam(
             list(disc_H.parameters()) + list(disc_Z.parameters()),
             lr=config.LEARNING_RATE,

@@ -1,0 +1,11 @@
+# created by virtualenv automatically
+lib
+CACHEDIR.TAG
+pyvenv.cfg
+Scripts
+share
+horse2zebra
+saved_image
+__pycache__/
+datasets/
+result_image/
