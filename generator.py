@@ -8,6 +8,8 @@ class ResidualBlock(nn.Module):
                                  nn.Conv2d(in_channels, in_channels, 3),
                                  nn.InstanceNorm2d(in_channels),
                                  nn.ReLU(inplace=True),
+                                 nn.Dropout(0.5),
+
                                  nn.ReflectionPad2d(1),
                                  nn.Conv2d(in_channels, in_channels, 3),
                                  nn.InstanceNorm2d(in_channels))
@@ -41,15 +43,18 @@ class Generator(nn.Module):
             ResidualBlock(256),
             ResidualBlock(256),
             ResidualBlock(256),
+            ResidualBlock(256),
+            ResidualBlock(256),
+            ResidualBlock(256),
 
             # Upsampling
-            nn.Upsample(scale_factor=2, mode='nearest'),
+            nn.ConvTranspose2d(256, 256, kernel_size=4, stride=2, padding=1),
             nn.ReflectionPad2d(1),
             nn.Conv2d(256, 128, kernel_size=3, stride=1, padding=0),
             nn.InstanceNorm2d(128),
             nn.ReLU(inplace=True),
 
-            nn.Upsample(scale_factor=2, mode='nearest'),
+            nn.ConvTranspose2d(128, 128, kernel_size=4, stride=2, padding=1),
             nn.ReflectionPad2d(1),
             nn.Conv2d(128, 64, kernel_size=3, stride=1, padding=0),
             nn.InstanceNorm2d(64),

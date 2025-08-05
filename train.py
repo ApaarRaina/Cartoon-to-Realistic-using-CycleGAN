@@ -1,4 +1,4 @@
-#17
+#1
 
 import torch
 import torch.nn as nn
@@ -16,7 +16,7 @@ import random
 import copy
 import torch.multiprocessing
 from generator import Generator
-from discriminator import Discriminator
+from discriminator import Discriminator,ImageBuffer
 
 
 if not os.path.isdir('saved_image'):
@@ -29,21 +29,22 @@ class Config:
     TRAIN_DIR = "horse2zebra"
     VAL_DIR = "horse2zebra"
     BATCH_SIZE = 1
-    LEARNING_RATE = 0.0001
-    LAMBDA_IDENTITY = 0.5
-    LAMBDA_CYCLE = 1
+    LEARNING_RATE = 0.00002
+    LAMBDA_IDENTITY = 0
+    LAMBDA_CYCLE = 10
+    LAMBDA_ADVERSERIAL=1
     NUM_WORKERS = 4
-    NUM_EPOCHS = 10
+    NUM_EPOCHS = 5
     LOAD_MODEL = True
     SAVE_MODEL = True
-    CHECKPOINT_GEN_H = "pretrained/genh_2.pth.tar"
-    CHECKPOINT_GEN_Z = "pretrained/genz_2.pth.tar"
-    CHECKPOINT_CRITIC_H = "pretrained/critich_2.pth.tar"
-    CHECKPOINT_CRITIC_Z = "pretrained/criticz_2.pth.tar"
+    DIVERSITY_LOSS = 0.5
+    CHECKPOINT_GEN_H = "pretrained/genh_3.pth.tar"
+    CHECKPOINT_GEN_Z = "pretrained/genz_3.pth.tar"
+    CHECKPOINT_CRITIC_H = "pretrained/critich_3.pth.tar"
+    CHECKPOINT_CRITIC_Z = "pretrained/criticz_3.pth.tar"
     transforms = A.Compose(
         [
             A.Resize(width=128, height=128),
-            A.HorizontalFlip(p=0.5),
             A.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5], max_pixel_value=255),
             ToTensorV2(),
         ],
@@ -63,8 +64,10 @@ class HorseZebraDataset(Dataset):
         self.horse_images = os.listdir(root_horse)
         self.len_set = max(len(self.zebra_images),len(self.horse_images))
         self.zebra_length, self.horse_length = len(self.zebra_images),len(self.horse_images)
+
     def __len__(self):
         return self.len_set
+
     def __getitem__(self, index):
         zebra_path= os.path.join(self.root_zebra,self.zebra_images[index%self.zebra_length])
         horse_path = os.path.join(self.root_horse,self.horse_images[index%self.horse_length])
@@ -94,16 +97,33 @@ class Utils:
             param_group['lr'] = lr
 
 
+    def load_checkpoint_g(self,checkpoint_path,model, optimizer, lr):
+        checkpoint = torch.load(checkpoint_path, map_location = config.DEVICE)
+        print('__loading checkpoint for model__')
+        model.load_state_dict(checkpoint['model_state'])
+        print('__loading checkpoint for optimizer__')
+        optimizer.load_state_dict(checkpoint['optimizer_state'])
+        for param_group  in optimizer.param_groups:
+            param_group['lr'] = lr+0.0001
+
+
 utils = Utils()
 config = Config()
 
 
 class Trainer:
     def train_epoch(self,disc_H,disc_Z,gen_Z,gen_H, loader,opt_disc, opt_gen,l1,mse,d_scaler,g_scaler):
+
+        fake_horse_buffer = ImageBuffer()
+        fake_zebra_buffer = ImageBuffer()
+
         loop = tqdm(loader,leave=True)
         for idx, (zebra,horse) in enumerate(loop):
             horse = horse.to(config.DEVICE)
             zebra = zebra.to(config.DEVICE)
+
+            zebra = zebra + 0.01 * torch.randn_like(zebra)
+            horse = horse + 0.01 * torch.randn_like(horse)
 
             # Train Disc
             with torch.cuda.amp.autocast():
@@ -111,7 +131,8 @@ class Trainer:
                 # Loss for Disc of Zebra
                 fake_zebra = gen_Z(horse)
                 D_Z_real = disc_Z(zebra)
-                D_Z_fake = disc_Z(fake_zebra.detach())
+                fake_zebra_image=fake_zebra_buffer.push_and_pop(fake_zebra)
+                D_Z_fake = disc_Z(fake_zebra_image.detach())
                 D_Z_real_loss = mse(D_Z_real,torch.ones_like(D_Z_real))
                 D_Z_fake_loss = mse(D_Z_fake,torch.zeros_like(D_Z_fake))
                 D_Z_loss = D_Z_real_loss+D_Z_fake_loss
@@ -119,14 +140,15 @@ class Trainer:
                 # loss for Disc of horse
                 fake_horse = gen_H(zebra)
                 D_H_real = disc_H(horse)
-                D_H_fake = disc_H(fake_horse.detach())
+                fake_horse_image = fake_horse_buffer.push_and_pop(fake_horse)
+                D_H_fake = disc_H(fake_horse_image.detach())
                 D_H_real_loss = mse(D_H_real,torch.ones_like(D_H_real))
                 D_H_fake_loss = mse(D_H_fake,torch.zeros_like(D_H_fake))
                 D_H_loss = D_H_real_loss+D_H_fake_loss
 
                 D_loss = (D_H_loss+D_Z_loss)/2
             opt_disc.zero_grad()
-            d_scaler.scale(D_loss).backward(retain_graph = True)
+            d_scaler.scale(D_loss).backward()
             d_scaler.step(opt_disc)
             d_scaler.update()
 
@@ -134,6 +156,8 @@ class Trainer:
             with torch.cuda.amp.autocast():
                 D_H_fake = disc_H(fake_horse)
                 D_Z_fake = disc_Z(fake_zebra)
+
+
 
                 # adversarial loss
                 loss_G_H = mse(D_H_fake, torch.ones_like(D_H_fake))
@@ -146,12 +170,12 @@ class Trainer:
                 cycle_horse_loss = l1(horse,cycle_horse)
 
                 # identity loss
-                cycle_horse = gen_H(horse)
-                cycle_zebra = gen_Z(zebra)
-                identity_zebra_loss = l1(zebra,cycle_zebra)
-                identity_horse_loss = l1(horse,cycle_horse)
+                identity_horse = gen_H(horse)
+                identity_zebra = gen_Z(zebra)
+                identity_zebra_loss = l1(zebra,identity_zebra)
+                identity_horse_loss = l1(horse,identity_horse)
 
-            G_loss = (loss_G_Z+loss_G_H+config.LAMBDA_CYCLE*(cycle_zebra_loss+cycle_horse_loss)+config.LAMBDA_IDENTITY*(identity_zebra_loss+identity_horse_loss))
+            G_loss = (config.LAMBDA_ADVERSERIAL*(loss_G_Z+loss_G_H)+config.LAMBDA_CYCLE*(cycle_zebra_loss+cycle_horse_loss)+config.LAMBDA_IDENTITY*(identity_zebra_loss+identity_horse_loss))
             opt_gen.zero_grad()
             g_scaler.scale(G_loss).backward()
             g_scaler.step(opt_gen)
@@ -183,13 +207,13 @@ class Trainer:
         mse = nn.MSELoss()
 
         if config.LOAD_MODEL:
-            utils.load_checkpoint(
+            utils.load_checkpoint_g(
                 config.CHECKPOINT_GEN_H,
                 gen_H,
                 opt_gen,
                 config.LEARNING_RATE,
             )
-            utils.load_checkpoint(
+            utils.load_checkpoint_g(
                 config.CHECKPOINT_GEN_Z,
                 gen_Z,
                 opt_gen,
@@ -261,3 +285,4 @@ if __name__ == "__main__":
     Trainer().train()
 
     plt.imshow(Image.open('./saved_image/zebras/800.png'))
+
