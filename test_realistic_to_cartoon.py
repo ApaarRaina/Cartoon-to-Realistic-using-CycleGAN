@@ -49,8 +49,8 @@ transforms = A.Compose(
 gen_H = Generator().to(device)
 gen_Z = Generator().to(device)
 
-checkpoint_h = torch.load('pretrained/genh_3.pth.tar', map_location=device)
-checkpoint_z = torch.load('pretrained/genz_3.pth.tar', map_location=device)
+checkpoint_h = torch.load('pretrained/genh.pth.tar', map_location=device)
+checkpoint_z = torch.load('pretrained/genz.pth.tar', map_location=device)
 print('__loaded the model__')
 
 gen_H.load_state_dict(checkpoint_h['model_state'])
@@ -102,16 +102,16 @@ for idx, (zebra, horse) in enumerate(val_loader):
     horse_img = (horse_img * 0.5) + 0.5
 
     fig, axs = plt.subplots(1, 3, figsize=(10, 5))
-    axs[0].imshow(zebra_img)
+    axs[0].imshow(horse_img)
     axs[0].set_title("Zebra Image")
     axs[0].axis("off")
 
-    axs[1].imshow(fake_horse_img)
+    axs[1].imshow(fake_zebra_img)
     axs[1].set_title("Fake Horse Image")
     axs[1].axis("off")
 
-    axs[2].imshow(cycle_zebra_img)
-    axs[2].set_title("Cycle Horse Image")
+    axs[2].imshow(cycle_horse_img)
+    axs[2].set_title("Cycle Zebra Image")
     axs[2].axis("off")
 
     plt.tight_layout()

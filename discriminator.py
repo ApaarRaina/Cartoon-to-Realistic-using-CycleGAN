@@ -18,10 +18,10 @@ class Discriminator(nn.Module):
             nn.LeakyReLU(0.2, inplace=True),
 
             nn.Conv2d(256, 512, 5, stride=2, padding=1),
-            nn.InstanceNorm2d(256),
+            nn.InstanceNorm2d(512),
             nn.LeakyReLU(0.2, inplace=True),
 
-            nn.Conv2d(256, 1, 5, padding=0)
+            nn.Conv2d(512, 1, 5, padding=0)
         )
     def forward(self, x):
         out = self.main(x)
@@ -32,7 +32,7 @@ class Discriminator(nn.Module):
 class ImageBuffer():
     def __init__(self):
         self.data = []
-        self.max_size = 50
+        self.max_size = 10
 
     def push_and_pop(self, data):
         to_return = []
@@ -53,7 +53,7 @@ class ImageBuffer():
 
 class TensorBuffer:
 
-    def __init__(self, max_size=25, shape=(3,128,128), device="cuda" if torch.cuda.is_available() else "cpu"):
+    def __init__(self, max_size=5, shape=(3,128,128), device="cuda" if torch.cuda.is_available() else "cpu"):
         self.max_size = max_size
         self.buffer = torch.zeros((max_size, *shape), device=device)
         self.index = 0
@@ -71,3 +71,14 @@ class TensorBuffer:
             return torch.cat([self.buffer[self.index:], self.buffer[:self.index]], dim=0)
         else:
             return self.buffer[:self.index]
+
+
+# Initialize the weights of the discriminator
+def weight_init_d(layer):
+    if type(layer) == nn.Conv2d:
+        nn.init.normal_(layer.weight.data, 0.0, 0.02)
+    elif type(layer) == nn.InstanceNorm2d:
+        nn.init.normal_(layer.weight.data, 1.0, 0.02)
+        nn.init.constant_(layer.bias.data, 0.0)
+    # end if
+# end weight_init_generator

@@ -1,5 +1,3 @@
-#1
-
 import torch
 import torch.nn as nn
 import os
@@ -29,19 +27,18 @@ class Config:
     TRAIN_DIR = "horse2zebra"
     VAL_DIR = "horse2zebra"
     BATCH_SIZE = 1
-    LEARNING_RATE = 0.00002
-    LAMBDA_IDENTITY = 0
+    LEARNING_RATE = 0.00001
+    LAMBDA_IDENTITY = 0.5
     LAMBDA_CYCLE = 10
     LAMBDA_ADVERSERIAL=1
     NUM_WORKERS = 4
-    NUM_EPOCHS = 5
+    NUM_EPOCHS = 4
     LOAD_MODEL = True
     SAVE_MODEL = True
-    DIVERSITY_LOSS = 0.5
-    CHECKPOINT_GEN_H = "pretrained/genh_3.pth.tar"
-    CHECKPOINT_GEN_Z = "pretrained/genz_3.pth.tar"
-    CHECKPOINT_CRITIC_H = "pretrained/critich_3.pth.tar"
-    CHECKPOINT_CRITIC_Z = "pretrained/criticz_3.pth.tar"
+    CHECKPOINT_GEN_H = "pretrained/genh.pth.tar"
+    CHECKPOINT_GEN_Z = "pretrained/genz.pth.tar"
+    CHECKPOINT_CRITIC_H = "pretrained/critich.pth.tar"
+    CHECKPOINT_CRITIC_Z = "pretrained/criticz.pth.tar"
     transforms = A.Compose(
         [
             A.Resize(width=128, height=128),
@@ -95,16 +92,6 @@ class Utils:
         optimizer.load_state_dict(checkpoint['optimizer_state'])
         for param_group  in optimizer.param_groups:
             param_group['lr'] = lr
-
-
-    def load_checkpoint_g(self,checkpoint_path,model, optimizer, lr):
-        checkpoint = torch.load(checkpoint_path, map_location = config.DEVICE)
-        print('__loading checkpoint for model__')
-        model.load_state_dict(checkpoint['model_state'])
-        print('__loading checkpoint for optimizer__')
-        optimizer.load_state_dict(checkpoint['optimizer_state'])
-        for param_group  in optimizer.param_groups:
-            param_group['lr'] = lr+0.0001
 
 
 utils = Utils()
@@ -207,13 +194,13 @@ class Trainer:
         mse = nn.MSELoss()
 
         if config.LOAD_MODEL:
-            utils.load_checkpoint_g(
+            utils.load_checkpoint(
                 config.CHECKPOINT_GEN_H,
                 gen_H,
                 opt_gen,
                 config.LEARNING_RATE,
             )
-            utils.load_checkpoint_g(
+            utils.load_checkpoint(
                 config.CHECKPOINT_GEN_Z,
                 gen_Z,
                 opt_gen,

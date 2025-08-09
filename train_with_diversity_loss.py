@@ -1,5 +1,3 @@
-# 1
-
 import torch
 import torch.nn as nn
 import os
@@ -29,15 +27,15 @@ class Config:
     TRAIN_DIR = "horse2zebra"
     VAL_DIR = "horse2zebra"
     BATCH_SIZE = 1
-    LEARNING_RATE = 0.0001
-    LAMBDA_IDENTITY = 1
+    LEARNING_RATE = 0.00015
+    LAMBDA_IDENTITY = 0.5
     LAMBDA_CYCLE = 10
-    LAMBDA_ADVERSERIAL = 10
+    LAMBDA_ADVERSERIAL = 2
     NUM_WORKERS = 4
     NUM_EPOCHS = 20
-    LOAD_MODEL = False
+    LOAD_MODEL = True 
     SAVE_MODEL = True
-    DIVERSITY_LOSS = 10
+    DIVERSITY_LOSS = 0.5
     CHECKPOINT_GEN_H = "pretrained/genh_3.pth.tar"
     CHECKPOINT_GEN_Z = "pretrained/genz_3.pth.tar"
     CHECKPOINT_CRITIC_H = "pretrained/critich_3.pth.tar"
@@ -147,7 +145,7 @@ class Trainer:
 
                 D_loss = (D_H_loss + D_Z_loss) / 2
 
-            if idx%30==0:
+            if idx % 5 == 0:
                 opt_disc.zero_grad()
                 d_scaler.scale(D_loss).backward(retain_graph=True)
                 d_scaler.step(opt_disc)
@@ -189,7 +187,7 @@ class Trainer:
                         cycle_zebra_loss + cycle_horse_loss) + config.LAMBDA_IDENTITY * (
                                   identity_zebra_loss + identity_horse_loss) - config.DIVERSITY_LOSS * (diversity_loss))
 
-            if idx%30==0:
+            if idx % 5 == 0:
                 opt_gen.zero_grad()
                 g_scaler.scale(G_loss).backward()
                 g_scaler.step(opt_gen)

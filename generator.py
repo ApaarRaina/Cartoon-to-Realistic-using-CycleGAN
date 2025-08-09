@@ -70,3 +70,22 @@ class Generator(nn.Module):
         out = self.main(x)
 
         return out
+
+
+# Initialize the weights of the generator
+def weight_init_g(layer):
+    if type(layer) == nn.ConvTranspose2d:
+        nn.init.normal_(layer.weight.data, 0.0, 0.02)
+    elif type(layer) == nn.InstanceNorm2d:
+        nn.init.normal_(layer.weight.data, 1.0, 0.02)
+        nn.init.constant_(layer.bias.data, 0.0)
+    # end if
+# end weight_init_generator
+
+def weights_init(m):
+    classname = m.__class__.__name__
+    if classname.find("Conv") != -1:
+        torch.nn.init.normal_(m.weight, 0.0, 0.02)
+    elif classname.find("BatchNorm") != -1:
+        torch.nn.init.normal_(m.weight, 1.0, 0.02)
+        torch.nn.init.zeros_(m.bias)
