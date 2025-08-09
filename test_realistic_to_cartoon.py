@@ -117,7 +117,7 @@ for idx, (zebra, horse) in enumerate(val_loader):
     plt.tight_layout()
     plt.show()
 
-    if idx == 4:
+    if idx == 10:
         break
 
 
